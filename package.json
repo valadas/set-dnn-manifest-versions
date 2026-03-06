@@ -4,6 +4,9 @@
   "description": "Sets dnn manifest versions in packages",
   "main": "./dist/index.js",
   "scripts": {
+    "build": "tsc",
+    "package": "ncc build src/index.ts --license licenses.txt",
+    "all": "npm run build && npm run package",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -26,5 +29,10 @@
     "@actions/glob": "^0.1.0",
     "@types/xml2js": "^0.4.5",
     "actions-toolkit": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.5",
+    "@vercel/ncc": "^0.38.4",
+    "typescript": "^5.9.3"
   }
 }
