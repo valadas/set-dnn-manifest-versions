@@ -4,10 +4,12 @@
   "description": "Sets dnn manifest versions in packages",
   "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --noEmit",
     "package": "ncc build src/index.ts --license licenses.txt",
     "all": "npm run build && npm run package",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "repository": {
     "type": "git",
@@ -33,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^25.3.5",
     "@vercel/ncc": "^0.38.4",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }

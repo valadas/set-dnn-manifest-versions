@@ -2570,6 +2570,7 @@ var core = __importStar(__nccwpck_require__(484));
 var glob = __importStar(__nccwpck_require__(206));
 var fs_1 = __nccwpck_require__(896);
 var readline = __importStar(__nccwpck_require__(785));
+var utils_1 = __nccwpck_require__(798);
 function run() {
     return __awaiter(this, void 0, void 0, function () {
         var version_1, globPattern, skipFile, includeSolutionInfo, includeIssueTemplates, includePackageJson, includeDnnReactCommon_1, fileStream, rl, _a, rl_1, rl_1_1, line, e_1_1, globber, files, solutionInfoGlob, solutionInfos, issueTemplateGlob, files_1, issueContent, singleDigitsVersion_1, packageJsonGlob, files_2, error_1;
@@ -2641,15 +2642,13 @@ function run() {
                         // Read the manifest
                         core.startGroup(file);
                         var manifestContent = (0, fs_1.readFileSync)(file).toString();
-                        var manifestRegex = /<package.*name="(.*?)".*version="(.*)".*/gm;
                         var result;
-                        while ((result = manifestRegex.exec(manifestContent)) !== null) {
+                        while ((result = utils_1.MANIFEST_READ_REGEX.exec(manifestContent)) !== null) {
                             // Log what we are doing
                             console.log("Setting ".concat(result[1], " from ").concat(result[2], " to ").concat(version_1));
                         }
                         // Replace the version
-                        var replaceRegex = /(<package.*name=".*?".*version=")(.*)(".*)/gm;
-                        manifestContent = manifestContent.replace(replaceRegex, "$1".concat(version_1, "$3"));
+                        manifestContent = (0, utils_1.replaceManifestVersions)(manifestContent, version_1);
                         // Save the file back
                         (0, fs_1.writeFile)(file, manifestContent, function (err) {
                             if (err) {
@@ -2669,12 +2668,9 @@ function run() {
                 case 17:
                     solutionInfos = _e.sent();
                     solutionInfos.forEach(function (solutionInfo) {
-                        var versionInfo = getVersion(version_1);
-                        var formatedVersion = formatVersionForSolutionInfo(versionInfo);
+                        var versionInfo = (0, utils_1.getVersion)(version_1);
                         var solutionInfoContent = (0, fs_1.readFileSync)(solutionInfo).toString();
-                        solutionInfoContent = solutionInfoContent.replace(/\[assembly: AssemblyVersion\(".*"\)\]/gm, "[assembly: AssemblyVersion(\"".concat(formatedVersion, "\")]"));
-                        solutionInfoContent = solutionInfoContent.replace(/\[assembly: AssemblyFileVersion\(".*"\)\]/gm, "[assembly: AssemblyFileVersion(\"".concat(formatedVersion, "\")]"));
-                        solutionInfoContent = solutionInfoContent.replace(/\[assembly: AssemblyInformationalVersion\(".*"\)\]/gm, "[assembly: AssemblyInformationalVersion(\"".concat(formatedVersion, " Custom build\")]"));
+                        solutionInfoContent = (0, utils_1.replaceSolutionInfoVersions)(solutionInfoContent, versionInfo);
                         (0, fs_1.writeFile)(solutionInfo, solutionInfoContent, function (err) {
                             if (err) {
                                 core.setFailed(err.message);
@@ -2695,7 +2691,7 @@ function run() {
                 case 20:
                     files_1 = _e.sent();
                     issueContent = (0, fs_1.readFileSync)(files_1[0]).toString();
-                    issueContent = issueContent.replace(/([.\s\S]*?\* \[ \].*alpha build)([.\s\S]*?)(\* \[ \].*)/gm, "$1\n* [ ] ".concat(version_1, " release candidate\n$3"));
+                    issueContent = (0, utils_1.replaceIssueTemplateVersion)(issueContent, version_1);
                     (0, fs_1.writeFile)(files_1[0], issueContent, function (err) {
                         if (err) {
                             core.setFailed(err.message);
@@ -2708,7 +2704,7 @@ function run() {
                     _e.label = 21;
                 case 21:
                     if (!includePackageJson) return [3 /*break*/, 24];
-                    singleDigitsVersion_1 = getSingleDigitsVersion(version_1);
+                    singleDigitsVersion_1 = (0, utils_1.getSingleDigitsVersion)(version_1);
                     return [4 /*yield*/, glob.create('./**/package.json')];
                 case 22:
                     packageJsonGlob = _e.sent();
@@ -2721,7 +2717,7 @@ function run() {
                         core.startGroup(packageJson['name']);
                         if (packageJson.hasOwnProperty('version')) {
                             console.log("from ", packageJson['version']);
-                            packageJson['version'] = getSingleDigitsVersion(version_1);
+                            packageJson['version'] = (0, utils_1.getSingleDigitsVersion)(version_1);
                             console.log("to ", packageJson['version']);
                         }
                         if (includeDnnReactCommon_1 && packageJson.hasOwnProperty('devDependencies') && packageJson.devDependencies.hasOwnProperty('@dnnsoftware/dnn-react-common')) {
@@ -2761,23 +2757,102 @@ function run() {
         });
     });
 }
+run();
+exports["default"] = run;
+
+
+/***/ }),
+
+/***/ 798:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.replaceIssueTemplateVersion = exports.replaceSolutionInfoVersions = exports.replaceManifestVersions = exports.ISSUE_TEMPLATE_REGEX = exports.ASSEMBLY_INFORMATIONAL_VERSION_REGEX = exports.ASSEMBLY_FILE_VERSION_REGEX = exports.ASSEMBLY_VERSION_REGEX = exports.MANIFEST_REPLACE_REGEX = exports.MANIFEST_READ_REGEX = exports.formatVersionForSolutionInfo = exports.getSingleDigitsVersion = exports.getVersion = void 0;
+/**
+ * Parses a DNN-style version string (e.g. "09.06.02") into a Version object.
+ * Leading zeros are stripped by parseInt.
+ */
 var getVersion = function (versionString) {
     var parts = versionString.split('.');
     return {
-        major: parseInt(parts[0]),
-        minor: parseInt(parts[1]),
-        patch: parseInt(parts[2])
+        major: parseInt(parts[0], 10),
+        minor: parseInt(parts[1], 10),
+        patch: parseInt(parts[2], 10),
     };
 };
+exports.getVersion = getVersion;
+/**
+ * Converts a DNN-style version string to a single-digit semver string.
+ * e.g. "09.06.02" → "9.6.2"
+ */
 var getSingleDigitsVersion = function (version) {
-    var v = getVersion(version);
-    return v.major + "." + v.minor + "." + v.patch;
+    var v = (0, exports.getVersion)(version);
+    return "".concat(v.major, ".").concat(v.minor, ".").concat(v.patch);
 };
+exports.getSingleDigitsVersion = getSingleDigitsVersion;
+/**
+ * Formats a Version for use in AssemblyVersion attributes.
+ * e.g. { major: 9, minor: 6, patch: 2 } → "9.6.2.0"
+ */
 var formatVersionForSolutionInfo = function (version) {
     return "".concat(version.major, ".").concat(version.minor, ".").concat(version.patch, ".0");
 };
-run();
-exports["default"] = run;
+exports.formatVersionForSolutionInfo = formatVersionForSolutionInfo;
+// ---------------------------------------------------------------------------
+// Regex patterns (exported so they can be tested and reused)
+// ---------------------------------------------------------------------------
+/**
+ * Matches a DNN manifest <package> element and captures name + current version.
+ * Capture groups: $1 = package name, $2 = current version
+ */
+exports.MANIFEST_READ_REGEX = /<package.*name="(.*?)".*version="([^"]+)".*/gm;
+/**
+ * Replaces the version attribute value in a DNN manifest <package> element.
+ * Capture groups: $1 = opening portion up to version=", $2 = version value, $3 = closing portion
+ */
+exports.MANIFEST_REPLACE_REGEX = /(<package.*name=".*?".*version=")([^"]+)(".*)/gm;
+/**
+ * Matches and replaces [assembly: AssemblyVersion("...")] in SolutionInfo.cs
+ */
+exports.ASSEMBLY_VERSION_REGEX = /\[assembly: AssemblyVersion\(".*"\)\]/gm;
+/**
+ * Matches and replaces [assembly: AssemblyFileVersion("...")] in SolutionInfo.cs
+ */
+exports.ASSEMBLY_FILE_VERSION_REGEX = /\[assembly: AssemblyFileVersion\(".*"\)\]/gm;
+/**
+ * Matches and replaces [assembly: AssemblyInformationalVersion("...")] in SolutionInfo.cs
+ */
+exports.ASSEMBLY_INFORMATIONAL_VERSION_REGEX = /\[assembly: AssemblyInformationalVersion\(".*"\)\]/gm;
+/**
+ * Matches the issue template block between alpha build and the next checkbox,
+ * used to inject a new RC version line.
+ * Capture groups: $1 = everything up to and including alpha line, $2 = gap, $3 = next checkbox line
+ */
+exports.ISSUE_TEMPLATE_REGEX = /([.\s\S]*?\* \[ \].*alpha build)([.\s\S]*?)(\* \[ \].*)/gm;
+// ---------------------------------------------------------------------------
+// Replacement helpers
+// ---------------------------------------------------------------------------
+/** Replaces all package versions in a manifest file's content. */
+var replaceManifestVersions = function (content, version) {
+    return content.replace(exports.MANIFEST_REPLACE_REGEX, "$1".concat(version, "$3"));
+};
+exports.replaceManifestVersions = replaceManifestVersions;
+/** Replaces all AssemblyVersion / AssemblyFileVersion attributes in SolutionInfo content. */
+var replaceSolutionInfoVersions = function (content, version) {
+    var formatted = (0, exports.formatVersionForSolutionInfo)(version);
+    return content
+        .replace(exports.ASSEMBLY_VERSION_REGEX, "[assembly: AssemblyVersion(\"".concat(formatted, "\")]"))
+        .replace(exports.ASSEMBLY_FILE_VERSION_REGEX, "[assembly: AssemblyFileVersion(\"".concat(formatted, "\")]"))
+        .replace(exports.ASSEMBLY_INFORMATIONAL_VERSION_REGEX, "[assembly: AssemblyInformationalVersion(\"".concat(formatted, " Custom build\")]"));
+};
+exports.replaceSolutionInfoVersions = replaceSolutionInfoVersions;
+/** Injects a new RC version line into an issue template's content. */
+var replaceIssueTemplateVersion = function (content, version) {
+    return content.replace(exports.ISSUE_TEMPLATE_REGEX, "$1\n* [ ] ".concat(version, " release candidate\n$3"));
+};
+exports.replaceIssueTemplateVersion = replaceIssueTemplateVersion;
 
 
 /***/ }),

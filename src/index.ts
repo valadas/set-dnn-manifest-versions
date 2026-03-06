@@ -2,6 +2,14 @@ import * as core from '@actions/core';
 import * as glob from '@actions/glob';
 import { readFileSync, writeFile, createReadStream } from 'fs';
 import * as readline from 'readline';
+import {
+    getVersion,
+    getSingleDigitsVersion,
+    MANIFEST_READ_REGEX,
+    replaceManifestVersions,
+    replaceSolutionInfoVersions,
+    replaceIssueTemplateVersion,
+} from './utils';
 
 async function run() {
     try {
@@ -37,15 +45,13 @@ async function run() {
             // Read the manifest
             core.startGroup(file);
             let manifestContent = readFileSync(file).toString();
-            const manifestRegex = /<package.*name="(.*?)".*version="(.*)".*/gm;
             let result;
-            while((result = manifestRegex.exec(manifestContent)) !== null) {
+            while((result = MANIFEST_READ_REGEX.exec(manifestContent)) !== null) {
                 // Log what we are doing
                 console.log(`Setting ${result[1]} from ${result[2]} to ${version}`);
             }
             // Replace the version
-            const replaceRegex = /(<package.*name=".*?".*version=")(.*)(".*)/gm;
-            manifestContent = manifestContent.replace(replaceRegex, `$1${version}$3`);
+            manifestContent = replaceManifestVersions(manifestContent, version);
             // Save the file back
             writeFile(file, manifestContent, err => {
                 if (err){
@@ -64,17 +70,8 @@ async function run() {
             const solutionInfos = await solutionInfoGlob.glob();
             solutionInfos.forEach(solutionInfo => {
                 const versionInfo = getVersion(version);
-                const formatedVersion = formatVersionForSolutionInfo(versionInfo);
                 let solutionInfoContent = readFileSync(solutionInfo).toString();
-                solutionInfoContent = solutionInfoContent.replace(
-                    /\[assembly: AssemblyVersion\(".*"\)\]/gm, 
-                    `[assembly: AssemblyVersion("${formatedVersion}")]`);
-                solutionInfoContent = solutionInfoContent.replace(
-                    /\[assembly: AssemblyFileVersion\(".*"\)\]/gm, 
-                    `[assembly: AssemblyFileVersion("${formatedVersion}")]`);
-                solutionInfoContent = solutionInfoContent.replace(
-                    /\[assembly: AssemblyInformationalVersion\(".*"\)\]/gm, 
-                    `[assembly: AssemblyInformationalVersion("${formatedVersion} Custom build")]`);
+                solutionInfoContent = replaceSolutionInfoVersions(solutionInfoContent, versionInfo);
                 writeFile(solutionInfo, solutionInfoContent, err => {
                     if (err){
                         core.setFailed(err.message);
@@ -92,10 +89,7 @@ async function run() {
             const issueTemplateGlob = await glob.create('./.github/ISSUE_TEMPLATE/bug-report.md');
             const files = await issueTemplateGlob.glob();
             let issueContent = readFileSync(files[0]).toString();
-            issueContent = issueContent.replace(
-                /([.\s\S]*?\* \[ \].*alpha build)([.\s\S]*?)(\* \[ \].*)/gm,
-                `$1\n* [ ] ${version} release candidate\n$3`
-            );
+            issueContent = replaceIssueTemplateVersion(issueContent, version);
             writeFile(files[0], issueContent, err => {
                 if (err) {
                     core.setFailed(err.message);
@@ -153,30 +147,6 @@ async function run() {
     }
 }
 
-const getVersion = (versionString: string): Version => {
-    const parts = versionString.split('.');
-    return {
-        major: parseInt(parts[0]),
-        minor: parseInt(parts[1]),
-        patch: parseInt(parts[2])
-    };
-}
-
-const getSingleDigitsVersion = (version: string): string => {
-    const v = getVersion(version);
-    return v.major + "." + v.minor + "." + v.patch;
-}
-
-const formatVersionForSolutionInfo = (version: Version): string => {
-    return `${version.major}.${version.minor}.${version.patch}.0`;
-}
-
-interface Version {
-    major: number,
-    minor: number,
-    patch: number
-}
-
-run()
+run();
 
 export default run;
