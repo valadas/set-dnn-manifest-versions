@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import * as glob from '@actions/glob';
+import fg from 'fast-glob';
 import { readFileSync, writeFile, createReadStream } from 'fs';
 import * as readline from 'readline';
 import {
@@ -14,7 +14,8 @@ import {
 async function run() {
     try {
         const version = core.getInput('version');
-        let globPattern = core.getInput('glob');
+        let globInclude = core.getInput('glob');
+        let globIgnore: string[] = [];
         const skipFile = core.getInput('skipFile');
         const includeSolutionInfo = core.getInput('includeSolutionInfo').toUpperCase() === "TRUE";
         const includeIssueTemplates = core.getInput('includeIssueTemplates').toUpperCase() === "TRUE";
@@ -24,23 +25,24 @@ async function run() {
 
         // Generate the glob if skipFile is provided
         if (skipFile !== null && skipFile.length > 0) {
-            globPattern = "**/*.dnn";
+            globInclude = "**/*.dnn";
             const fileStream = createReadStream(skipFile);
             const rl = readline.createInterface({
                 input: fileStream,
                 crlfDelay: Infinity
             });
             for await (const line of rl) {
-                globPattern += "\n!" + line;
-                console.log("Adding " + line + " to ignored globs.");
+                if (line.trim().length > 0) {
+                    globIgnore.push(line.trim());
+                    console.log("Adding " + line + " to ignored globs.");
+                }
             }
-            console.log("Using glob: ", globPattern);
-            core.debug("Using glob: " + globPattern);
+            console.log("Using glob: ", globInclude, "ignoring:", globIgnore);
+            core.debug("Using glob: " + globInclude + " ignoring: " + globIgnore.join(', '));
         }
 
         // Get the files
-        const globber = await glob.create(globPattern);
-        const files = await globber.glob();
+        const files = await fg(globInclude, { ignore: globIgnore });
         files.forEach(file => {
             // Read the manifest
             core.startGroup(file);
@@ -66,9 +68,8 @@ async function run() {
 
         // Handle the solutionInfo.cs file
         if (includeSolutionInfo) {
-            const solutionInfoGlob = await glob.create('./**/SolutionInfo.cs', { followSymbolicLinks: false });
-            const solutionInfos = await solutionInfoGlob.glob();
-            solutionInfos.forEach(solutionInfo => {
+            const solutionInfos = await fg('./**/SolutionInfo.cs', { followSymbolicLinks: false });
+            solutionInfos.forEach((solutionInfo: string) => {
                 const versionInfo = getVersion(version);
                 let solutionInfoContent = readFileSync(solutionInfo).toString();
                 solutionInfoContent = replaceSolutionInfoVersions(solutionInfoContent, versionInfo);
@@ -86,16 +87,15 @@ async function run() {
         // Update the issue templates
         if (includeIssueTemplates) {
             core.startGroup("Updating issue template");
-            const issueTemplateGlob = await glob.create('./.github/ISSUE_TEMPLATE/bug-report.md');
-            const files = await issueTemplateGlob.glob();
-            let issueContent = readFileSync(files[0]).toString();
+            const issueFiles = await fg('./.github/ISSUE_TEMPLATE/bug-report.md');
+            let issueContent = readFileSync(issueFiles[0]).toString();
             issueContent = replaceIssueTemplateVersion(issueContent, version);
-            writeFile(files[0], issueContent, err => {
+            writeFile(issueFiles[0], issueContent, err => {
                 if (err) {
                     core.setFailed(err.message);
                 }
                 else {
-                    console.log("updated ", files[0]);
+                    console.log("updated ", issueFiles[0]);
                 }
             });
             core.endGroup();
@@ -104,9 +104,8 @@ async function run() {
         // Update package.json
         if (includePackageJson) {
             const singleDigitsVersion = getSingleDigitsVersion(version);
-            const packageJsonGlob = await glob.create('./**/package.json');
-            const files = await packageJsonGlob.glob();
-            files.forEach(file => {
+            const packageJsonFiles = await fg('./**/package.json');
+            packageJsonFiles.forEach((file: string) => {
                 const packageJsonContent = readFileSync(file).toString();
                 const packageJson = JSON.parse(packageJsonContent);
                 core.startGroup(packageJson['name']);

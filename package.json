@@ -28,9 +28,9 @@
   },
   "homepage": "https://github.com/valadas/set-dnn-manifest-versions#readme",
   "dependencies": {
-    "@actions/glob": "^0.1.0",
     "@types/xml2js": "^0.4.5",
-    "actions-toolkit": "^4.0.0"
+    "actions-toolkit": "^4.0.0",
+    "fast-glob": "^3.3.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.5",
